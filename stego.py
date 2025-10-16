@@ -130,11 +130,29 @@ def encode_file(image_path: str, secret_file_path: str, output_image_path: str) 
     for i, bit in enumerate(message_bits):
         current_byte = pixels_flat[i] # Get the current pixel component (byte) from the flattened array.
 
-        # Delete the LSB (AND operator) # Clear the Least Significant Bit of the current byte.
-        new_byte = current_byte & 0b11111110 # Use a bitwise AND operation with a mask (11111110) to set the LSB to 0.
+        # Clear the Least Significant Bit of the current byte. For this, we use a bitwise AND operation with a mask
+        # (11111110) to set the LSB to 0.
+        # Example :
+        # Current byte = 10000111
+        # Mask = 11111110
+        # -> 10000111 & 11111110 = 10000110
+        # Resetting the LSB prepares the byte for insertion of the secret bit, whether 0 or 1.
+        # The purpose of the operation is therefore not to "change" the bit, but to ensure that it is zero.
+        # This creates a reliable "empty space" for the next step, which is to insert the secret message bit with
+        # the |= operation.
+        new_byte = current_byte & 0b11111110
 
-        # Insert the secret bit (OR with 0 or 1) # Insert the secret bit into the cleared LSB position.
-        new_byte |= bit # Use a bitwise OR operation with the secret bit (0 or 1) to set the LSB.
+        # Insert the secret bit into the cleared LSB position.For this, we use a bitwise OR operation with the secret
+        # bit (0 or 1) to set the LSB.
+        # Example :
+        # Current byte = 10000110
+        # Secret bit = 00000001 (1)
+        # -> 10000110 | 00000001 = 10000111
+        # This operation is the final touch that writes the secret bit to the pixel's byte.
+        # It works reliably because the previous step prepared the groundwork by setting the destination bit to 0.
+        # The OR operation can then "turn on" this bit if it should be 1, or leave it "off" if it should be 0, without *
+        # ever disturbing the other 7 more significant bits in the byte.
+        new_byte |= bit
 
         # Update the pixel component in the flattened array with the new byte containing the hidden bit.
         pixels_flat[i] = new_byte
@@ -146,8 +164,8 @@ def encode_file(image_path: str, secret_file_path: str, output_image_path: str) 
     stego_img = Image.fromarray(stego_data) # Create a new PIL Image object from the modified NumPy array.
     stego_img.save(output_image_path) # Save the steganographic image to the specified output path.
 
-    print(f"Encoding successful. {len(secret_data_bytes)} hidden bytes. Image saved as : {output_image_path}") # Print a success message with details about the hidden data.
-    return True # Return True to indicate successful encoding.
+    print(f"Encoding successful. {len(secret_data_bytes)} hidden bytes. Image saved as : {output_image_path}")
+    return True
 
 def decode_file(image_path: str, output_dir: str = "extracted") -> bool:
     """Extracts a hidden file from a steganographic image by reading the LSBs
@@ -189,8 +207,10 @@ def decode_file(image_path: str, output_dir: str = "extracted") -> bool:
 
     # Checks if the end of the message is reached
         if len(secret_bits) >= marker_len:
-            if secret_bits[-marker_len:] == marker_bits: # Check if the last 'marker_len' bits match the end-of-file marker.
-                data_payload_bytes = bits_to_bytes(secret_bits[:-marker_len]) # Convert the extracted secret bits (excluding the marker) back into bytes.
+            # Check if the last 'marker_len' bits match the end-of-file marker.
+            if secret_bits[-marker_len:] == marker_bits:
+                # Convert the extracted secret bits (excluding the marker) back into bytes.
+                data_payload_bytes = bits_to_bytes(secret_bits[:-marker_len])
                 break # Exit the loop as the end marker has been found.
 
     # Print an error if the loop finishes without finding the marker.
@@ -203,8 +223,9 @@ def decode_file(image_path: str, output_dir: str = "extracted") -> bool:
     # ------------------------------------------------------------------------------
     separator = b'|' # Define the separator byte used to distinguish the filename from the file data.
 
+    # Find the index of the separator byte within the payload.
     try:
-        separator_index = data_payload_bytes.index(separator) # Find the index of the separator byte within the payload.
+        separator_index = data_payload_bytes.index(separator)
     except ValueError:
         print("Error : File name separator not found. Data corrupted")
         return False
@@ -226,7 +247,7 @@ def decode_file(image_path: str, output_dir: str = "extracted") -> bool:
     with open(output_file_path, 'wb') as f: # Open the output file in binary write mode.
         f.write(file_data) # Write the extracted file data to the file.
 
-    print(f"\nDecoding successful. Secret file saved as : {output_file_path} ({len(file_data)} bytes))") # Print a success message with details.
+    print(f"\nDecoding successful. Secret file saved as : {output_file_path} ({len(file_data)} bytes))")
     return True
 
 def main():
